@@ -70,7 +70,7 @@ env:
   # Project & scheme
   PROJECT:      LinguaBridge.xcodeproj
   SCHEME:       LinguaBridge
-
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Target: iOS 17.0 minimum; use iPhone 16 simulator on Xcode 26 runner
   # (iPhone XR simulator still exists but iPhone 16 is guaranteed present)
   SIMULATOR_DEVICE: iPhone 16
@@ -181,7 +181,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── Pin Xcode ────────────────────────────────────────────────────────
       - name: Select Xcode 26.0
