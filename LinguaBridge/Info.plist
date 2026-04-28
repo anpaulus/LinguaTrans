@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Microphone — required for speech input -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>LinguaBridge needs microphone access to capture your speech for translation.</string>
+
+    <!-- Speech recognition — required for on-device STT -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>LinguaBridge uses speech recognition to convert your words to text before translation.</string>
+
+    <!-- Local network — required for Multipeer Connectivity (P2P WiFi) -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>LinguaBridge connects directly to the other iPhone over local WiFi for peer-to-peer translation.</string>
+
+    <!-- Bonjour services that Multipeer Connectivity advertises -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_lingua-bridge._tcp</string>
+        <string>_lingua-bridge._udp</string>
+    </array>
+</dict>
+</plist>
