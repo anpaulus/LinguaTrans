@@ -141,4 +141,4 @@ On first use:
 ---
 
 ## License
-MIT — free to use and modify.
+GNU GENERAL PUBLIC LICENSE.
