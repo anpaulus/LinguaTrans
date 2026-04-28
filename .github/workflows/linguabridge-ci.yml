@@ -26,6 +26,11 @@
 
 name: LinguaBridge CI/CD
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  
 # ── Triggers ─────────────────────────────────────────────────────────────────
 on:
   push:
@@ -44,8 +49,7 @@ on:
     paths:
       - '**.swift'
       - '**.plist'
-      - '**.xcodeproj/**'
-
+      - '**.xcodeproj/**'   
   # ── Manual "Run workflow" button in GitHub Actions UI ──────────────────────
   workflow_dispatch:
     inputs:
@@ -189,7 +193,7 @@ jobs:
 
       # ── Cache DerivedData to speed up subsequent builds ──────────────────
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.DERIVED_DATA_PATH }}
           key: derived-data-${{ runner.os }}-${{ hashFiles('**/*.swift', '**/*.xcodeproj/project.pbxproj') }}
@@ -280,7 +284,7 @@ jobs:
 
       # ── Upload test results as artifact ──────────────────────────────────
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()   # upload even if tests fail
         with:
           name: test-results-${{ github.run_number }}
@@ -291,7 +295,7 @@ jobs:
 
       # ── Publish test summary in GitHub PR / commit view ──────────────────
       - name: Publish test summary
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v5
         if: always()
         with:
           report_paths: 'test-results/junit.xml'
@@ -451,7 +455,7 @@ jobs:
 
       # ── Upload IPA as downloadable artifact ──────────────────────────────
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LinguaBridge-IPA-${{ github.run_number }}
           path: |
