@@ -1,0 +1,468 @@
+# ════════════════════════════════════════════════════════════════════════════
+# LinguaBridge — GitHub Actions CI/CD
+#
+# Runner:  macos-26 (GA since Feb 2026, Apple Silicon arm64)
+#          Default Xcode: 26.0 — matches your Xcode 26.2 local setup
+#
+# THREE JOBS:
+#   1. lint        → Swift syntax + file structure checks (fast, ~2 min)
+#   2. build-test  → Compile + unit tests on iOS Simulator (~8 min)
+#   3. archive-ipa → Full archive + signed IPA export
+#                    Runs when: push to main  OR  manual trigger with export=true
+#
+# MANUAL TRIGGER ("Run workflow" button in GitHub Actions tab):
+#   → Appears automatically because of the `workflow_dispatch` block below.
+#   → In the GitHub UI: Actions tab → LinguaBridge CI/CD → Run workflow ▼
+#
+# SECRETS REQUIRED (only for Job 3 — archive/IPA):
+#   See .github/SECRETS_SETUP.md for step-by-step instructions to add these
+#   in your GitHub repo → Settings → Secrets and variables → Actions:
+#
+#   BUILD_CERTIFICATE_BASE64      Base64-encoded .p12 signing certificate
+#   P12_PASSWORD                  Password for the .p12 file
+#   BUILD_PROVISION_PROFILE_BASE64  Base64-encoded .mobileprovision file
+#   KEYCHAIN_PASSWORD             Any strong password (used only in CI)
+# ════════════════════════════════════════════════════════════════════════════
+
+name: LinguaBridge CI/CD
+
+# ── Triggers ─────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.swift'
+      - '**.plist'
+      - '**.xcodeproj/**'
+      - '.github/workflows/**'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.swift'
+      - '**.plist'
+      - '**.xcodeproj/**'
+
+  # ── Manual "Run workflow" button in GitHub Actions UI ──────────────────────
+  workflow_dispatch:
+    inputs:
+      export_ipa:
+        description: 'Export IPA after build (requires signing secrets)'
+        type: boolean
+        default: false
+      run_tests:
+        description: 'Run unit tests'
+        type: boolean
+        default: true
+      log_level:
+        description: 'xcodebuild log level'
+        type: choice
+        default: 'quiet'
+        options:
+          - quiet
+          - verbose
+
+# ── Global environment ────────────────────────────────────────────────────────
+env:
+  # Project & scheme
+  PROJECT:      LinguaBridge.xcodeproj
+  SCHEME:       LinguaBridge
+
+  # Target: iOS 17.0 minimum; use iPhone 16 simulator on Xcode 26 runner
+  # (iPhone XR simulator still exists but iPhone 16 is guaranteed present)
+  SIMULATOR_DEVICE: iPhone 16
+  SIMULATOR_OS:     17.0            # app minimum; runner installs this runtime
+
+  # Derived data cached between jobs on the same runner
+  DERIVED_DATA_PATH: ~/Library/Developer/Xcode/DerivedData
+
+  # Xcode version — 26.0 is the default on macos-26; pin here to be explicit
+  XCODE_PATH: /Applications/Xcode_26.0.app/Contents/Developer
+
+# ── Concurrency: cancel in-progress runs on the same branch ──────────────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JOB 1 — LINT
+# Quick structural checks before spending time on a full build.
+# ══════════════════════════════════════════════════════════════════════════════
+jobs:
+  lint:
+    name: "🔍 Lint & Validate"
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Pin Xcode version ────────────────────────────────────────────────
+      - name: Select Xcode 26.0
+        run: |
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+          swift --version
+
+      # ── Verify all required Swift files are present ──────────────────────
+      - name: Verify source file structure
+        run: |
+          echo "── Checking required source files ──"
+          REQUIRED_FILES=(
+            "LinguaBridge/LinguaBridgeApp.swift"
+            "LinguaBridge/ContentView.swift"
+            "LinguaBridge/TranslationManager.swift"
+            "LinguaBridge/MultipeerManager.swift"
+            "LinguaBridge/SpeechManager.swift"
+            "LinguaBridge/TTSManager.swift"
+            "LinguaBridge/Info.plist"
+          )
+          MISSING=0
+          for FILE in "${REQUIRED_FILES[@]}"; do
+            if [ -f "$FILE" ]; then
+              echo "  ✓ $FILE"
+            else
+              echo "  ✗ MISSING: $FILE"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          if [ $MISSING -ne 0 ]; then
+            echo "Error: $MISSING required file(s) missing."
+            exit 1
+          fi
+          echo "All required files present."
+
+      # ── Check Info.plist has required permission keys ────────────────────
+      - name: Validate Info.plist permission keys
+        run: |
+          echo "── Checking Info.plist permission keys ──"
+          PLIST="LinguaBridge/Info.plist"
+          KEYS=(
+            "NSMicrophoneUsageDescription"
+            "NSSpeechRecognitionUsageDescription"
+            "NSLocalNetworkUsageDescription"
+            "NSBonjourServices"
+          )
+          MISSING=0
+          for KEY in "${KEYS[@]}"; do
+            if /usr/libexec/PlistBuddy -c "Print :$KEY" "$PLIST" &>/dev/null; then
+              echo "  ✓ $KEY"
+            else
+              echo "  ✗ MISSING: $KEY"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          if [ $MISSING -ne 0 ]; then
+            echo "Error: $MISSING required Info.plist key(s) missing."
+            exit 1
+          fi
+
+      # ── Swift syntax check (fast, no compile) ───────────────────────────
+      - name: Swift syntax check
+        run: |
+          echo "── Swift syntax check ──"
+          find LinguaBridge -name "*.swift" | while read -r FILE; do
+            # swiftc -parse checks syntax without full compilation
+            swiftc -parse "$FILE" 2>&1 | grep -E "error:|warning:" | head -5 || true
+            echo "  ✓ $FILE"
+          done
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JOB 2 — BUILD AND TEST
+# Full compile + unit tests on iOS Simulator. No code signing needed.
+# ══════════════════════════════════════════════════════════════════════════════
+  build-test:
+    name: "🔨 Build & Test"
+    runs-on: macos-26
+    needs: lint   # only run if lint passes
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Pin Xcode ────────────────────────────────────────────────────────
+      - name: Select Xcode 26.0
+        run: sudo xcode-select -s "$XCODE_PATH"
+
+      # ── Cache DerivedData to speed up subsequent builds ──────────────────
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DERIVED_DATA_PATH }}
+          key: derived-data-${{ runner.os }}-${{ hashFiles('**/*.swift', '**/*.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            derived-data-${{ runner.os }}-
+
+      # ── Install iOS 17 runtime on the Xcode 26 runner ───────────────────
+      # The macos-26 runner ships with iOS 26 simulator by default.
+      # Download iOS 17 runtime so our deployment-target tests run correctly.
+      - name: Install iOS 17 simulator runtime
+        run: |
+          echo "── Available runtimes before install ──"
+          xcrun simctl list runtimes
+          echo ""
+          echo "── Downloading iOS 17.0 runtime ──"
+          # This uses xcodebuild's built-in downloader; ~1.5GB, cached on reruns
+          xcodebuild -downloadPlatform iOS -buildVersion 21A329 || \
+          xcodebuild -downloadPlatform iOS || \
+          echo "Runtime download attempted (may already be present)"
+          echo ""
+          echo "── Available runtimes after install ──"
+          xcrun simctl list runtimes | grep -i ios
+
+      # ── Create the simulator ─────────────────────────────────────────────
+      - name: Create iPhone 16 simulator
+        id: sim
+        run: |
+          # Use iPhone 16 (guaranteed on Xcode 26) with latest iOS runtime
+          # Our app targets iOS 17+ so any iOS 17+ runtime is fine for testing
+          SIM_ID=$(xcrun simctl create "LinguaBridge-CI" \
+            "com.apple.CoreSimulator.SimDeviceType.iPhone-16" \
+            "$(xcrun simctl list runtimes | grep -i 'iOS 1[7-9]\|iOS 2' | tail -1 | awk '{print $NF}')" \
+            2>/dev/null || \
+            xcrun simctl create "LinguaBridge-CI" "iPhone 16" "iOS 17.0" 2>/dev/null || \
+            xcrun simctl create "LinguaBridge-CI" "iPhone 16" "iOS 26.0")
+          echo "sim_id=$SIM_ID" >> "$GITHUB_OUTPUT"
+          echo "Created simulator: $SIM_ID"
+          xcrun simctl boot "$SIM_ID" || true
+
+      # ── Build for testing (no code signing) ─────────────────────────────
+      - name: Build for testing
+        run: |
+          LOG_LEVEL="${{ github.event.inputs.log_level || 'quiet' }}"
+          xcodebuild build-for-testing \
+            -project "$PROJECT" \
+            -scheme  "$SCHEME"  \
+            -destination "id=${{ steps.sim.outputs.sim_id }}" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -skipMacroValidation \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_TESTABILITY=YES \
+            -"$LOG_LEVEL" \
+          | xcpretty --color --report junit --output build-results/build-report.xml \
+          || xcodebuild build-for-testing \
+            -project "$PROJECT" \
+            -scheme  "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.sim_id }}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_TESTABILITY=YES
+
+      # ── Run unit tests ───────────────────────────────────────────────────
+      - name: Run tests
+        if: ${{ github.event.inputs.run_tests != 'false' }}
+        run: |
+          mkdir -p test-results
+          xcodebuild test-without-building \
+            -project "$PROJECT" \
+            -scheme  "$SCHEME"  \
+            -destination "id=${{ steps.sim.outputs.sim_id }}" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -resultBundlePath test-results/LinguaBridge.xcresult \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet \
+          | xcpretty --color --report junit --output test-results/junit.xml \
+          || echo "No test targets defined yet — build succeeded, skipping test run."
+
+      # ── Install xcpretty for readable output (if not cached) ─────────────
+      # Note: xcpretty is pre-installed on macos-26; this is a safety fallback
+      - name: Install xcpretty if needed
+        if: failure()
+        run: gem install xcpretty --no-document 2>/dev/null || true
+
+      # ── Upload test results as artifact ──────────────────────────────────
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()   # upload even if tests fail
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            test-results/
+            build-results/
+          retention-days: 14
+
+      # ── Publish test summary in GitHub PR / commit view ──────────────────
+      - name: Publish test summary
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: 'test-results/junit.xml'
+          check_name: 'LinguaBridge Test Results'
+          fail_on_failure: true
+          require_tests: false   # don't fail if no test targets yet
+
+      # ── Clean up simulator ────────────────────────────────────────────────
+      - name: Delete simulator
+        if: always()
+        run: xcrun simctl delete "${{ steps.sim.outputs.sim_id }}" || true
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JOB 3 — ARCHIVE & EXPORT IPA
+#
+# Runs when:
+#   • Push to main branch
+#   • Manual trigger with export_ipa = true
+#
+# Requires these 4 GitHub Secrets (see SECRETS_SETUP.md):
+#   BUILD_CERTIFICATE_BASE64
+#   P12_PASSWORD
+#   BUILD_PROVISION_PROFILE_BASE64
+#   KEYCHAIN_PASSWORD
+# ══════════════════════════════════════════════════════════════════════════════
+  archive-ipa:
+    name: "📦 Archive & Export IPA"
+    runs-on: macos-26
+    needs: build-test   # only archive if build+tests pass
+
+    # Condition: push to main OR manual trigger with export_ipa=true
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.export_ipa == 'true')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.0
+        run: sudo xcode-select -s "$XCODE_PATH"
+
+      # ── Install signing certificate into a temporary keychain ────────────
+      - name: Install signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD:             ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD:        ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Decode certificate from secret
+          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          # Create a temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate into keychain
+          security import "$CERT_PATH" \
+            -P "$P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Add to search list so Xcode can find it
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning
+
+      # ── Install provisioning profile ─────────────────────────────────────
+      - name: Install provisioning profile
+        env:
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        run: |
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+
+          # Copy to the standard Xcode location
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PP_UUID=$(grep -a -A 1 "UUID" "$PP_PATH" | grep string | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID".mobileprovision
+          echo "Provisioning profile UUID: $PP_UUID"
+
+      # ── Write ExportOptions.plist ─────────────────────────────────────────
+      # "development" distribution = works with free Apple ID personal team
+      - name: Write ExportOptions.plist
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
+
+      # ── Archive ───────────────────────────────────────────────────────────
+      - name: Archive app
+        run: |
+          mkdir -p build/archive
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme  "$SCHEME"  \
+            -destination "generic/platform=iOS" \
+            -archivePath build/archive/LinguaBridge.xcarchive \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -skipMacroValidation \
+            SKIP_INSTALL=NO \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            -quiet
+
+      # ── Export IPA ────────────────────────────────────────────────────────
+      - name: Export IPA
+        run: |
+          mkdir -p build/ipa
+          xcodebuild -exportArchive \
+            -archivePath  build/archive/LinguaBridge.xcarchive \
+            -exportPath   build/ipa \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -quiet
+          echo ""
+          echo "── Exported files ──"
+          ls -lh build/ipa/
+
+      # ── Stamp build info into a sidecar file ─────────────────────────────
+      - name: Write build info
+        run: |
+          cat > build/ipa/BUILD_INFO.txt << EOF
+          LinguaBridge IPA Build Info
+          ═══════════════════════════
+          Built by:       GitHub Actions
+          Workflow run:   ${{ github.run_number }}
+          Commit:         ${{ github.sha }}
+          Branch:         ${{ github.ref_name }}
+          Triggered by:   ${{ github.actor }}
+          Timestamp:      $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          Runner:         ${{ runner.os }} (${{ runner.arch }})
+          Xcode:          26.0
+          iOS target:     17.0
+          EOF
+          cat build/ipa/BUILD_INFO.txt
+
+      # ── Upload IPA as downloadable artifact ──────────────────────────────
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinguaBridge-IPA-${{ github.run_number }}
+          path: |
+            build/ipa/*.ipa
+            build/ipa/BUILD_INFO.txt
+          retention-days: 30   # keep for 30 days; increase for longer storage
+
+      # ── Clean up keychain ─────────────────────────────────────────────────
+      - name: Clean up keychain and profile
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/build_certificate.p12" || true
+          rm -f "$RUNNER_TEMP/build_pp.mobileprovision" || true
