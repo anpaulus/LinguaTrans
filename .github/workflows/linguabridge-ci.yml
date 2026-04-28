@@ -329,7 +329,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select Xcode 26.0
         run: sudo xcode-select -s "$XCODE_PATH"
