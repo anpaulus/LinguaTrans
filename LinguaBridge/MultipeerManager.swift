@@ -1,5 +1,6 @@
 import MultipeerConnectivity
 import Foundation
+import Combine
 
 /// Manages peer-to-peer WiFi Direct connection using Apple's Multipeer Connectivity.
 /// No router or internet required — works completely offline between two iPhones.
