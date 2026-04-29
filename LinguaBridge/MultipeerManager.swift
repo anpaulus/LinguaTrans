@@ -4,7 +4,7 @@ import Foundation
 /// Manages peer-to-peer WiFi Direct connection using Apple's Multipeer Connectivity.
 /// No router or internet required — works completely offline between two iPhones.
 class MultipeerManager: NSObject, ObservableObject {
-
+    @Published var connectedPeers: [MCPeerID] = []
     // MARK: - Constants
     private static let serviceType = "lingua-bridge"   // Max 15 chars, lowercase/hyphen only
 
@@ -17,8 +17,8 @@ class MultipeerManager: NSObject, ObservableObject {
     // MARK: - Published state
     @Published var isConnected     : Bool   = false
     @Published var connectionStatus: String = "Not connected"
-    @Published var connectedPeers  : [MCPeerID] = []
-
+    //@Published var connectedPeers  : [MCPeerID] = []
+    
     /// Called on the main thread whenever a text message arrives from the peer.
     var onReceiveText: ((String) -> Void)?
 
