@@ -226,7 +226,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO  \
             ENABLE_TESTABILITY=YES   \
             GENERATE_INFOPLIST_FILE=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+            IPHONEOS_DEPLOYMENT_TARGET=18.0 \
             -"$VERBOSITY" 2>&1 | tee /tmp/build.log
           RESULT=${PIPESTATUS[0]}
 
@@ -258,7 +258,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO  \
             GENERATE_INFOPLIST_FILE=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+            IPHONEOS_DEPLOYMENT_TARGET=18.0 \
             -quiet 2>&1 | tee /tmp/test.log
           RESULT=${PIPESTATUS[0]}
 
