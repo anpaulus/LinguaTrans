@@ -13,9 +13,9 @@
 #   Both match the placeholder destinations the runner exposes.
 #
 # Action versions (all first-party, no third-party):
-#   actions/checkout@v4          ✅
+#   actions/checkout@v5          ✅
 #   actions/cache@v4             ✅ (no v5/v6 exists for this action)
-#   actions/upload-artifact@v4   ✅
+#   actions/upload-artifact@v5   ✅
 #
 # Node.js 24 opt-in:
 #   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  — silences Node 20 warning
@@ -86,7 +86,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select Xcode 26.0
         run: |
@@ -189,7 +189,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select Xcode 26.0
         run: sudo xcode-select -s "$XCODE_PATH"
@@ -299,7 +299,7 @@ jobs:
 
       # ── Upload test results artifact ─────────────────────────────────────
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: test-results-run-${{ github.run_number }}
