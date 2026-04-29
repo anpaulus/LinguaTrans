@@ -4,10 +4,9 @@ import Foundation
 /// Speaks translated text aloud using on-device TTS (AVSpeechSynthesizer).
 /// No internet required. Language voices are built into iOS.
 class TTSManager: NSObject, ObservableObject {
-
-    private let synthesizer = AVSpeechSynthesizer()
     @Published var isSpeaking = false
-
+    private let synthesizer = AVSpeechSynthesizer()
+    
     override init() {
         super.init()
         synthesizer.delegate = self
