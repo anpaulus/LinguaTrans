@@ -55,6 +55,7 @@ env:
   SCHEME:           LinguaBridge
   DERIVED_DATA:     ~/Library/Developer/Xcode/DerivedData
   XCODE_PATH:       /Applications/Xcode_26.0.app/Contents/Developer
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Cancel in-progress runs on the same branch
 concurrency:
