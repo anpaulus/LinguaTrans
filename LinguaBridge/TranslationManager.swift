@@ -1,5 +1,6 @@
 import Translation
 import SwiftUI
+import Combine
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TranslationManager
