@@ -603,5 +603,4 @@ struct BubbleView: View {
 
 #Preview("iPhone XR") {
     ContentView()
-        .previewDevice(PreviewDevice(rawValue: "iPhone XR"))
 }
