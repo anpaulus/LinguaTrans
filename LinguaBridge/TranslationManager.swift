@@ -25,10 +25,8 @@ import SwiftUI
 
 @MainActor
 final class TranslationManager: ObservableObject {
-
-    // MARK: - Published state (drives UI badges and download prompt)
-    @Published var isReady        = false
-    @Published var isTranslating  = false
+    @Published var isReady = false
+    @Published var isTranslating = false
     @Published var modelStatus    = ModelStatus.unknown
     @Published var lastError      : String? = nil
 
