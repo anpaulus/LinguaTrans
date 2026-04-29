@@ -285,6 +285,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -314,7 +315,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				SUPPORTS_MACCATALYST = NO;
-				VALID_ARCHS = "arm64 x86_64";
+	    			VALID_ARCHS = "arm64 x86_64";
 				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
@@ -322,7 +323,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		5E716D072FA107CD00A0BEC1 /* Build configuration list for PBXProject "LinguaBridge" */ = {
+		5E716D072FA107CB00A0BEC1 /* Build configuration list for PBXProject "LinguaBridge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5E716D152FA107CD00A0BEC1 /* Debug */,
