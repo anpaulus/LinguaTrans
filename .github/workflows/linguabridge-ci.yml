@@ -217,6 +217,7 @@ jobs:
           xcodebuild build \
             -project         "$PROJECT" \
             -scheme          "$SCHEME"  \
+            -sdk            iphonesimulator \
             -destination     "generic/platform=iOS Simulator" \
             -derivedDataPath "$DERIVED_DATA" \
             -skipMacroValidation \
