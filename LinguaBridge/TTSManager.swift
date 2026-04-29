@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Combine
 
 /// Speaks translated text aloud using on-device TTS (AVSpeechSynthesizer).
 /// No internet required. Language voices are built into iOS.
