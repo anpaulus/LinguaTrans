@@ -1,6 +1,7 @@
 import Speech
 import AVFoundation
 import Foundation
+import Combine
 
 /// Wraps Apple's Speech framework for on-device speech recognition.
 /// Works offline after the language model is downloaded (automatic on first use).
