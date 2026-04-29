@@ -63,7 +63,7 @@ on:
 env:
   PROJECT:      LinguaBridge.xcodeproj
   SCHEME:       LinguaBridge
-  DERIVED_DATA: ~/Library/Developer/Xcode/DerivedData
+  DERIVED_DATA: ${{ github.workspace }}/DerivedData
   XCODE_PATH:   /Applications/Xcode_26.0.app/Contents/Developer
 
   # Opt into Node.js 24 now — silences the Node 20 deprecation warning.
