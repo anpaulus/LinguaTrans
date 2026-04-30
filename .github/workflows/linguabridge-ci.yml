@@ -185,7 +185,11 @@ jobs:
     name: "🔨 Build & Test"
     runs-on: macos-15
     needs: lint
-
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [ "iPhone XR", "iPhone 12" ]
+        
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -244,19 +248,24 @@ jobs:
           echo ""; echo "✅ Build succeeded."
 
       # ── Test ──────────────────────────────────────────────────────────────
-      - name: Run unit tests
+      - name: Show available simulators
+        run: |
+          echo "── Available simulators on runner ──"
+          xcrun simctl list devices available
+
+      - name: Run unit tests (${{ matrix.device }})
         if: ${{ github.event.inputs.run_tests != 'false' }}
         run: |
           mkdir -p test-results
-          echo "── Running unit tests ──"
+          echo "── Running unit tests on ${{ matrix.device }} ──"
           set -o pipefail
           xcodebuild test \
             -project          "$PROJECT" \
             -scheme           "$SCHEME"  \
             -sdk               iphonesimulator \
-            -destination      "platform=iOS Simulator,name=Any iOS Simulator Device" \
+            -destination      "platform=iOS Simulator,name=${{ matrix.device }},OS=latest" \
             -derivedDataPath  "$DERIVED_DATA" \
-            -resultBundlePath test-results/LinguaBridge.xcresult \
+            -resultBundlePath "test-results/LinguaBridge-${{ matrix.device }}.xcresult" \
             CODE_SIGN_IDENTITY=""    \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO  \
