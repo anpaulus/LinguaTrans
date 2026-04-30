@@ -12,6 +12,9 @@ class SpeechManager: NSObject, ObservableObject {
     @Published var liveTranscript : String = ""
     @Published var isAvailable    : Bool   = false
 
+    /// Fires on the main thread with the latest partial recognised string while recording.
+    var onLiveTranscript: ((String) -> Void)?
+
     /// Fires on the main thread with the final recognised string when the user stops speaking.
     var onFinalResult: ((String) -> Void)?
 
@@ -101,7 +104,10 @@ class SpeechManager: NSObject, ObservableObject {
 
             if let result {
                 let text = result.bestTranscription.formattedString
-                DispatchQueue.main.async { self.liveTranscript = text }
+                DispatchQueue.main.async {
+                    self.liveTranscript = text
+                    self.onLiveTranscript?(text)
+                }
 
                 if result.isFinal {
                     DispatchQueue.main.async {
