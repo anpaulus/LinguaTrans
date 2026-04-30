@@ -1,27 +1,25 @@
 # ════════════════════════════════════════════════════════════════════════════
-# LinguaBridge — GitHub Actions CI (No Code Signing)
+# LinguaBridge — GitHub Actions CI
+# Runner    : macos-15  (Xcode 16.x, iOS 18 SDK — stable and available)
+# Target    : iOS 18.0, iPhone only (TARGETED_DEVICE_FAMILY = 1)
+# Signing   : disabled (personal Apple ID, install via Xcode ⌘R)
 #
-# FIXED: Simulator destination error resolved.
-#   Root cause: previous workflow selected a simulator by UDID, but the
-#   macos-26 runner only has placeholder destinations — no concrete iOS
-#   Simulator runtime is pre-installed. Using a UDID that doesn't exist
-#   causes "Unable to find a destination matching the provided destination".
+# Root causes fixed vs previous iterations:
+#   1. Runner: macos-26 unavailable → use macos-15 (Xcode 16.x, iOS 18 SDK)
+#   2. Scheme BlueprintIdentifier was "LinguaBridge" (name) instead of the
+#      UUID "5E716D0B2FA107CB00A0BEC1" → xcodebuild couldn't resolve the
+#      target → "Supported platforms empty" → exit code 70
+#   3. project.pbxproj: missing INFOPLIST_FILE, ENABLE_APP_SANDBOX on iOS,
+#      duplicate SDKROOT keys, GENERATE_INFOPLIST_FILE = YES in Release
+#   4. actions/checkout@v5, upload-artifact@v5 don't exist → use @v4
+#   5. Hardcoded XCODE_PATH for Xcode 26 wrong on macos-15
 #
-#   Fix: removed the UDID-selection step entirely. Now uses:
-#     Build → generic/platform=iOS Simulator   (no runtime needed)
-#     Test  → platform=iOS Simulator,name=Any iOS Simulator Device
-#   Both match the placeholder destinations the runner exposes.
+# Action versions (all first-party, confirmed stable):
+#   actions/checkout@v4         ✅ latest stable
+#   actions/cache@v4            ✅ latest stable (no v5 exists)
+#   actions/upload-artifact@v4  ✅ latest stable
 #
-# Action versions (all first-party, no third-party):
-#   actions/checkout@v5          ✅
-#   actions/cache@v4             ✅ (no v5/v6 exists for this action)
-#   actions/upload-artifact@v5   ✅
-#
-# Node.js 24 opt-in:
-#   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  — silences Node 20 warning
-#
-# Runner : macos-26 (Apple Silicon arm64, Xcode 26.0 pre-installed)
-# NO secrets · NO certificates · NO provisioning profiles required.
+# FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: silences Node 20 deprecation warning
 # ════════════════════════════════════════════════════════════════════════════
 
 name: LinguaBridge CI
@@ -29,7 +27,7 @@ name: LinguaBridge CI
 permissions:
   contents: read
   checks: write
-  
+
 on:
   push:
     branches: [ main, develop ]
@@ -46,7 +44,6 @@ on:
       - '**.plist'
       - '**.xcodeproj/**'
 
-  # "Run workflow" button in GitHub Actions UI
   workflow_dispatch:
     inputs:
       run_tests:
@@ -59,19 +56,14 @@ on:
         default: quiet
         options: [ quiet, verbose ]
 
-# ── Global environment ────────────────────────────────────────────────────────
+# ── Global env ────────────────────────────────────────────────────────────────
 env:
   PROJECT:      LinguaBridge.xcodeproj
   SCHEME:       LinguaBridge
   DERIVED_DATA: ${{ github.workspace }}/DerivedData
-  XCODE_PATH:   /Applications/Xcode_26.0.app/Contents/Developer
-
-  # Opt into Node.js 24 now — silences the Node 20 deprecation warning.
-  # GitHub forces Node 24 as default on June 2, 2026 and removes Node 20
-  # from runners on September 16, 2026.
+  # Node 24 opt-in — silences deprecation warning (mandatory before Sep 2026)
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Cancel in-progress runs on the same branch/PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -82,19 +74,46 @@ concurrency:
 jobs:
   lint:
     name: "🔍 Lint & Validate"
-    runs-on: macos-26
+    runs-on: macos-15          # ← Xcode 16.x, iOS 18 SDK, stable runner
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: Select Xcode 26.4
+      # Discover and select the newest Xcode 16.x on this runner
+      - name: Select Xcode 16
         run: |
-          sudo xcode-select -s "$XCODE_PATH"
-          echo "Xcode : $(xcodebuild -version | head -1)"
-          echo "Swift : $(swift --version | head -1)"
+          echo "── Available Xcode installations ──"
+          ls /Applications | grep Xcode || true
+          # Pick newest Xcode 16.x, fall back to system default
+          XCODE_APP=$(ls /Applications | grep -E "^Xcode_16" | sort -V | tail -1)
+          if [ -n "$XCODE_APP" ]; then
+            sudo xcode-select -s "/Applications/$XCODE_APP/Contents/Developer"
+            echo "Selected: $XCODE_APP"
+          else
+            echo "Using default Xcode: $(xcode-select -p)"
+          fi
+          echo ""
+          xcodebuild -version
+          swift --version
 
-      # ── Confirm all required Swift source files exist ──────────────────
+      # Verify the scheme BlueprintIdentifier matches the pbxproj UUID
+      - name: Verify scheme BlueprintIdentifier
+        run: |
+          SCHEME_FILE="LinguaBridge.xcodeproj/xcshareddata/xcschemes/LinguaBridge.xcscheme"
+          TARGET_UUID="5E716D0B2FA107CB00A0BEC1"
+          echo "── Checking scheme BlueprintIdentifier ──"
+          if grep -q "BlueprintIdentifier = \"$TARGET_UUID\"" "$SCHEME_FILE"; then
+            echo "  ✓ BlueprintIdentifier = $TARGET_UUID"
+          else
+            echo "  ✗ BlueprintIdentifier is NOT the correct UUID!"
+            echo "    Found:"
+            grep "BlueprintIdentifier" "$SCHEME_FILE" | head -3
+            echo ""
+            echo "❌ Fix: set BlueprintIdentifier to $TARGET_UUID in the scheme file."
+            exit 1
+          fi
+
       - name: Check required source files
         run: |
           echo "── Checking required source files ──"
@@ -111,13 +130,12 @@ jobs:
           MISSING=0
           for F in "${FILES[@]}"; do
             if [ -f "$F" ]; then echo "  ✓  $F"
-            else echo "  ✗  MISSING: $F"; MISSING=$((MISSING + 1)); fi
+            else echo "  ✗  MISSING: $F"; MISSING=$((MISSING+1)); fi
           done
-          [ "$MISSING" -eq 0 ] || { echo ""; echo "❌  $MISSING required file(s) missing."; exit 1; }
-          echo ""; echo "✅  All source files present."
+          [ "$MISSING" -eq 0 ] || { echo ""; echo "❌ $MISSING file(s) missing."; exit 1; }
+          echo ""; echo "✅ All source files present."
 
-      # ── Verify required Info.plist permission keys ─────────────────────
-      - name: Validate Info.plist permission keys
+      - name: Validate Info.plist keys
         run: |
           echo "── Checking Info.plist permission keys ──"
           PLIST="LinguaBridge/Info.plist"
@@ -131,12 +149,11 @@ jobs:
           for K in "${KEYS[@]}"; do
             if /usr/libexec/PlistBuddy -c "Print :$K" "$PLIST" &>/dev/null
             then echo "  ✓  $K"
-            else echo "  ✗  MISSING: $K"; MISSING=$((MISSING + 1)); fi
+            else echo "  ✗  MISSING: $K"; MISSING=$((MISSING+1)); fi
           done
-          [ "$MISSING" -eq 0 ] || { echo ""; echo "❌  $MISSING key(s) missing."; exit 1; }
-          echo ""; echo "✅  Info.plist keys valid."
+          [ "$MISSING" -eq 0 ] || { echo ""; echo "❌ $MISSING key(s) missing."; exit 1; }
+          echo ""; echo "✅ Info.plist valid."
 
-      # ── Swift syntax check (parse only — no full compile needed) ────────
       - name: Swift syntax check
         run: |
           echo "── Swift syntax check ──"
@@ -145,79 +162,68 @@ jobs:
             OUTPUT=$(swiftc -parse "$FILE" 2>&1 || true)
             if echo "$OUTPUT" | grep -q "error:"; then
               echo "  ✗  $FILE"; echo "$OUTPUT" | grep "error:" | head -3
-              ERRORS=$((ERRORS + 1))
+              ERRORS=$((ERRORS+1))
             else
               echo "  ✓  $FILE"
             fi
           done < <(find LinguaBridge -name "*.swift" | sort)
-          [ "$ERRORS" -eq 0 ] || { echo ""; echo "❌  $ERRORS file(s) have syntax errors."; exit 1; }
-          echo ""; echo "✅  All Swift files pass syntax check."
+          [ "$ERRORS" -eq 0 ] || { echo ""; echo "❌ $ERRORS file(s) have errors."; exit 1; }
+          echo ""; echo "✅ All Swift files valid."
 
-      # ── Print available destinations (useful for debugging future errors) ─
-      - name: Show available xcodebuild destinations
+      # Show what destinations are actually available — useful for debugging
+      - name: Show available destinations
         run: |
-          echo "── Available destinations for scheme '$SCHEME' ──"
-          xcodebuild \
-            -project     "$PROJECT" \
-            -scheme      "$SCHEME"  \
+          echo "── Destinations for scheme '$SCHEME' ──"
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME" \
             -showdestinations 2>&1 \
-          | grep -E "platform:|name:|id:" | sed 's/^/  /' || true
+            | grep -E "platform:|name:|error:|Ineligible" | head -20 | sed 's/^/  /' || true
 
 # ══════════════════════════════════════════════════════════════════════════════
 # JOB 2 — BUILD & TEST
-#
-# DESTINATION STRATEGY (fixes the "Unable to find destination" error):
-#
-#   Build: -destination "generic/platform=iOS Simulator"
-#     → A generic destination. xcodebuild compiles for the iOS Simulator
-#       SDK without needing a concrete device or installed runtime.
-#       Always works on any macOS runner regardless of which runtimes
-#       are installed. Produces a fully compiled binary.
-#
-#   Test:  -destination "platform=iOS Simulator,name=Any iOS Simulator Device"
-#     → Matches the placeholder destination the runner exposes:
-#       { platform:iOS Simulator, name:Any iOS Simulator Device }
-#       xcodebuild picks whatever simulator runtime is available.
-#       No UDID needed, no manual boot step required.
-#
-# Both avoid the UDID-based destination that caused the original error.
 # ══════════════════════════════════════════════════════════════════════════════
   build-test:
     name: "🔨 Build & Test"
-    runs-on: macos-26
+    runs-on: macos-15
     needs: lint
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: Select Xcode 26.4
-        run: sudo xcode-select -s "$XCODE_PATH"
+      - name: Select Xcode 16
+        run: |
+          XCODE_APP=$(ls /Applications | grep -E "^Xcode_16" | sort -V | tail -1)
+          if [ -n "$XCODE_APP" ]; then
+            sudo xcode-select -s "/Applications/$XCODE_APP/Contents/Developer"
+          fi
+          xcodebuild -version
 
-      # ── Cache DerivedData for faster repeat builds ───────────────────────
       - name: Cache DerivedData
         uses: actions/cache@v4
         with:
           path: ${{ env.DERIVED_DATA }}
-          key: deriveddata-v2-${{ runner.os }}-${{ hashFiles('**/*.swift', '**/project.pbxproj') }}
-          restore-keys: |
-            deriveddata-v2-${{ runner.os }}-
+          key: dd-macos15-${{ hashFiles('**/*.swift', '**/project.pbxproj') }}
+          restore-keys: dd-macos15-
 
-      # ── Build — generic iOS Simulator destination, signing off ───────────
-      # Uses generic/platform=iOS Simulator so no runtime install is needed.
-      - name: Build (signing disabled)
+      # ── Build ─────────────────────────────────────────────────────────────
+      # -sdk iphonesimulator     → compile against the iOS Simulator SDK
+      # generic/platform=iOS Simulator → no concrete device/runtime needed
+      # CODE_SIGNING_ALLOWED=NO → skip all signing (personal use)
+      # GENERATE_INFOPLIST_FILE=NO → use our hand-written Info.plist
+      - name: Build
         run: |
           VERBOSITY="${{ github.event.inputs.log_level || 'quiet' }}"
           echo "── Building LinguaBridge ──"
+          echo "   runner      : macos-15 (Xcode 16)"
+          echo "   sdk         : iphonesimulator"
           echo "   destination : generic/platform=iOS Simulator"
           echo "   signing     : disabled"
           echo ""
-
           set -o pipefail
           xcodebuild build \
             -project         "$PROJECT" \
             -scheme          "$SCHEME"  \
-            -sdk            iphonesimulator \
+            -sdk              iphonesimulator \
             -destination     "generic/platform=iOS Simulator" \
             -derivedDataPath "$DERIVED_DATA" \
             -skipMacroValidation \
@@ -229,28 +235,24 @@ jobs:
             IPHONEOS_DEPLOYMENT_TARGET=18.0 \
             -"$VERBOSITY" 2>&1 | tee /tmp/build.log
           RESULT=${PIPESTATUS[0]}
-
           if [ "$RESULT" -ne 0 ]; then
-            echo ""
-            echo "── Build failed. Last 60 lines ──"
-            tail -60 /tmp/build.log
+            echo ""; echo "── Build failed. Last 80 lines ──"
+            tail -80 /tmp/build.log
             exit 1
           fi
           echo ""; echo "✅ Build succeeded."
 
-      # ── Tests — uses Any iOS Simulator Device placeholder ────────────────
+      # ── Test ──────────────────────────────────────────────────────────────
       - name: Run unit tests
         if: ${{ github.event.inputs.run_tests != 'false' }}
         run: |
           mkdir -p test-results
           echo "── Running unit tests ──"
-          echo "   destination : platform=iOS Simulator,name=Any iOS Simulator Device"
-          echo ""
-
           set -o pipefail
           xcodebuild test \
             -project          "$PROJECT" \
             -scheme           "$SCHEME"  \
+            -sdk               iphonesimulator \
             -destination      "platform=iOS Simulator,name=Any iOS Simulator Device" \
             -derivedDataPath  "$DERIVED_DATA" \
             -resultBundlePath test-results/LinguaBridge.xcresult \
@@ -261,22 +263,16 @@ jobs:
             IPHONEOS_DEPLOYMENT_TARGET=18.0 \
             -quiet 2>&1 | tee /tmp/test.log
           RESULT=${PIPESTATUS[0]}
-
           if [ "$RESULT" -ne 0 ]; then
             if grep -qE "no tests were executed|does not contain test" /tmp/test.log 2>/dev/null; then
-              echo ""
-              echo "⚠️  No test targets found — build passed, tests skipped."
-              echo "   Add a LinguaBridgeTests target in Xcode to enable tests."
+              echo ""; echo "⚠️  No test targets — build passed, tests skipped."
             else
-              echo "── Test output ──"
-              tail -40 /tmp/test.log
-              exit 1
+              tail -40 /tmp/test.log; exit 1
             fi
           else
             echo ""; echo "✅ Tests passed."
           fi
 
-      # ── Write summary to the GitHub Actions run page ─────────────────────
       - name: Write job summary
         if: always()
         run: |
@@ -289,18 +285,14 @@ jobs:
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Branch | \`${{ github.ref_name }}\` |"
             echo "| Triggered by | @${{ github.actor }} |"
-            echo "| Runner | \`macos-26\` (Apple Silicon) |"
-            echo "| Xcode | 26.0 |"
-            echo "| Build destination | \`generic/platform=iOS Simulator\` |"
+            echo "| Runner | \`macos-15\` (Xcode 16) |"
+            echo "| iOS deployment target | 18.0 |"
             echo "| Code signing | ❌ Disabled (personal use) |"
-            echo "| IPA export | ❌ Not included — install via Xcode ⌘R |"
-            echo ""
-            echo "> **Install on iPhone XR:** open the project in Xcode, select your device, press **⌘R**."
+            echo "| IPA | ❌ Install via Xcode ⌘R on your Mac |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Upload test results artifact ─────────────────────────────────────
       - name: Upload test results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-run-${{ github.run_number }}
