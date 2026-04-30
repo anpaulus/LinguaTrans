@@ -188,7 +188,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: [ "iPhone XR", "iPhone 12" ]
+        device: [ "iPhone 16" ]
+        os: [ "18.5" ]
         
     steps:
       - name: Checkout
@@ -257,13 +258,13 @@ jobs:
         if: ${{ github.event.inputs.run_tests != 'false' }}
         run: |
           mkdir -p test-results
-          echo "── Running unit tests on ${{ matrix.device }} ──"
+          echo "── Running unit tests on ${{ matrix.device }} (iOS ${{ matrix.os }}) ──"
           set -o pipefail
           xcodebuild test \
             -project          "$PROJECT" \
             -scheme           "$SCHEME"  \
             -sdk               iphonesimulator \
-            -destination      "platform=iOS Simulator,name=${{ matrix.device }},OS=latest" \
+            -destination      "platform=iOS Simulator,name=${{ matrix.device }},OS=${{ matrix.os }}" \
             -derivedDataPath  "$DERIVED_DATA" \
             -resultBundlePath "test-results/LinguaBridge-${{ matrix.device }}.xcresult" \
             CODE_SIGN_IDENTITY=""    \
