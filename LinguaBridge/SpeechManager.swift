@@ -56,8 +56,14 @@ class SpeechManager: NSObject, ObservableObject {
                 DispatchQueue.main.async { completion(false) }
                 return
             }
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                DispatchQueue.main.async { completion(granted) }
+            if #available(iOS 17.0, *) {
+                AVAudioApplication.requestRecordPermission { granted in
+                    DispatchQueue.main.async { completion(granted) }
+                }
+            } else {
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    DispatchQueue.main.async { completion(granted) }
+                }
             }
         }
     }
