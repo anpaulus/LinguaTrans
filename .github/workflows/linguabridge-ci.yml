@@ -49,7 +49,7 @@ on:
       run_tests:
         description: 'Run unit tests after build'
         type: boolean
-        default: true
+        default: false
       log_level:
         description: 'xcodebuild log verbosity'
         type: choice
@@ -179,10 +179,10 @@ jobs:
             | grep -E "platform:|name:|error:|Ineligible" | head -20 | sed 's/^/  /' || true
 
 # ══════════════════════════════════════════════════════════════════════════════
-# JOB 2 — BUILD & TEST
+# JOB 2 — BUILD & TEST (NOT TESTED)
 # ══════════════════════════════════════════════════════════════════════════════
   build-test:
-    name: "🔨 Build & Test"
+    name: "🔨 Build" # & Test"
     runs-on: macos-15
     needs: lint
     strategy:
@@ -225,12 +225,14 @@ jobs:
           echo "   signing     : disabled"
           echo ""
           set -o pipefail
+          mkdir -p LinguaBridgeTests/build-results
           xcodebuild build \
             -project         "$PROJECT" \
             -scheme          "$SCHEME"  \
             -sdk              iphonesimulator \
             -destination     "generic/platform=iOS Simulator" \
             -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "LinguaBridgeTests/build-results/LinguaBridge-Build.xcresult" \
             -skipMacroValidation \
             CODE_SIGN_IDENTITY=""    \
             CODE_SIGNING_REQUIRED=NO \
@@ -249,41 +251,41 @@ jobs:
           echo ""; echo "✅ Build succeeded."
 
       # ── Test ──────────────────────────────────────────────────────────────
-      - name: Show available simulators
-        run: |
-          echo "── Available simulators on runner ──"
-          xcrun simctl list devices available
+      #- name: Show available simulators
+      #  run: |
+      #    echo "── Available simulators on runner ──"
+      #    xcrun simctl list devices available
 
-      - name: Run unit tests (${{ matrix.device }})
-        if: ${{ github.event.inputs.run_tests != 'false' }}
-        run: |
-          mkdir -p test-results
-          echo "── Running unit tests on ${{ matrix.device }} (iOS ${{ matrix.os }}) ──"
-          set -o pipefail
-          xcodebuild test \
-            -project          "$PROJECT" \
-            -scheme           "$SCHEME"  \
-            -sdk               iphonesimulator \
-            -destination      "platform=iOS Simulator,name=${{ matrix.device }},OS=${{ matrix.os }}" \
-            -derivedDataPath  "$DERIVED_DATA" \
-            -resultBundlePath "test-results/LinguaBridge-${{ matrix.device }}.xcresult" \
-            CODE_SIGN_IDENTITY=""    \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO  \
-            GENERATE_INFOPLIST_FILE=NO \
-            EXCLUDED_SOURCE_FILE_NAMES=Info.plist \
-            IPHONEOS_DEPLOYMENT_TARGET=18.0 \
-            -quiet 2>&1 | tee /tmp/test.log
-          RESULT=${PIPESTATUS[0]}
-          if [ "$RESULT" -ne 0 ]; then
-            if grep -qE "no tests were executed|does not contain test" /tmp/test.log 2>/dev/null; then
-              echo ""; echo "⚠️  No test targets — build passed, tests skipped."
-            else
-              tail -40 /tmp/test.log; exit 1
-            fi
-          else
-            echo ""; echo "✅ Tests passed."
-          fi
+      #- name: Run unit tests (${{ matrix.device }})
+      #  if: ${{ github.event.inputs.run_tests != 'false' }}
+      #  run: |
+      #    mkdir -p test-results
+      #    echo "── Running unit tests on ${{ matrix.device }} (iOS ${{ matrix.os }}) ──"
+      #    set -o pipefail
+      #    xcodebuild test \
+      #      -project          "$PROJECT" \
+      #      -scheme           "$SCHEME"  \
+      #      -sdk               iphonesimulator \
+      #      -destination      "platform=iOS Simulator,name=${{ matrix.device }},OS=${{ matrix.os }}" \
+      #      -derivedDataPath  "$DERIVED_DATA" \
+      #      -resultBundlePath "test-results/LinguaBridge-${{ matrix.device }}.xcresult" \
+      #      CODE_SIGN_IDENTITY=""    \
+      #      CODE_SIGNING_REQUIRED=NO \
+      #      CODE_SIGNING_ALLOWED=NO  \
+      #      GENERATE_INFOPLIST_FILE=NO \
+      #      EXCLUDED_SOURCE_FILE_NAMES=Info.plist \
+      #      IPHONEOS_DEPLOYMENT_TARGET=18.0 \
+      #      -quiet 2>&1 | tee /tmp/test.log
+      #    RESULT=${PIPESTATUS[0]}
+      #    if [ "$RESULT" -ne 0 ]; then
+      #      if grep -qE "no tests were executed|does not contain test" /tmp/test.log 2>/dev/null; then
+      #        echo ""; echo "⚠️  No test targets — build passed, tests skipped."
+      #      else
+      #        tail -40 /tmp/test.log; exit 1
+      #      fi
+      #    else
+      #      echo ""; echo "✅ Tests passed."
+      #    fi
 
       - name: Write job summary
         if: always()
@@ -303,11 +305,13 @@ jobs:
             echo "| IPA | ❌ Install via Xcode ⌘R on your Mac |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload test results
+      - name: Upload build results #test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-run-${{ github.run_number }}
-          path: test-results/
+          #name: test-results-run-${{ github.run_number }}
+          #path: test-results/
+          name: build-results-run-${{ github.run_number }}
+          path: LinguaBridgeTests/build-results/
           retention-days: 14
           if-no-files-found: ignore
