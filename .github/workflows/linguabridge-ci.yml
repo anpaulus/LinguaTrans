@@ -305,13 +305,11 @@ jobs:
             echo "| IPA | ❌ Install via Xcode ⌘R on your Mac |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload build results #test results
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
-        if: always()
+        if: success() # Only upload if the build actually worked
         with:
-          #name: test-results-run-${{ github.run_number }}
-          #path: test-results/
-          name: build-results-run-${{ github.run_number }}
-          path: LinguaBridgeTests/build-results/
+          name: LinguaBridge-App-Run-${{ github.run_number }}
+          # This path must match the -derivedDataPath used in your xcodebuild command
+          path: DerivedData/Build/Products/Debug-iphonesimulator/LinguaBridge.app
           retention-days: 14
-          if-no-files-found: ignore
